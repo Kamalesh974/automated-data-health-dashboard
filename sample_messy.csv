@@ -1,0 +1,17 @@
+id,age,income,city,notes,score
+1,25,50000,New York,ok,7.5
+2,,52000,Boston,,8.1
+3,31,abc,Chicago,mixed type in income,6.9
+4,45,61000,New York,,7.8
+5,29,,Boston,missing income,5.4
+6,38,59500,,unexpected empty city,7.2
+7,52,250000,Chicago,high income outlier,9.9
+8,27,53000,Boston,,7.0
+9,33,54500,New York,,6.8
+10,41,-999,Chicago,weird sentinel value,1.0
+11,36,58000,Boston,,7.4
+12,,,New York,fully missing numerics,
+13,30,55000,Chicago,,7.1
+14,48,62500,Boston,,8.0
+15,26,51500,New York,,6.7
+extra_col,unexpected header row style,,,,

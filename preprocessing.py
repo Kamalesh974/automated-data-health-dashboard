@@ -2,16 +2,21 @@
 median imputation and KNN imputation, plus a way to compare the two."""
 
 import pandas as pd
+import numpy as np
 from sklearn.impute import KNNImputer
 
 
 def impute_numeric_median(numeric_df: pd.DataFrame) -> dict:
-    """Fill missing values in each numeric column with that column's median.
+    """Fill missing values (and zeros) in each numeric column with that column's median.
 
     Columns that are entirely missing have no median to impute with, so they
     are dropped from the returned frame rather than left as NaN.
     """
     numeric_df = numeric_df.copy()
+    
+    # Treat explicit 0s as missing data as requested
+    numeric_df.replace(0, np.nan, inplace=True)
+
     fully_missing = numeric_df.columns[numeric_df.isna().all()]
     if len(fully_missing) > 0:
         numeric_df = numeric_df.drop(columns=fully_missing)
@@ -27,19 +32,17 @@ def impute_numeric_median(numeric_df: pd.DataFrame) -> dict:
 
 
 def impute_numeric_knn(numeric_df: pd.DataFrame, k: int = 5) -> dict:
-    """Fill missing values using K-Nearest Neighbors imputation.
+    """Fill missing values (and zeros) using K-Nearest Neighbors imputation.
 
     Each missing value is filled with the (uniformly weighted) average of
     that column's value across the k rows most similar to it, using
-    whichever other numeric columns both rows actually have. This can pick
-    up relationships between columns that a flat per-column median ignores -
-    e.g. filling in income based on rows with a similar age and tenure,
-    rather than just "the median income across everyone."
-
-    Columns that are entirely missing have no signal to compute a distance
-    from, so they are dropped first, same as impute_numeric_median.
+    whichever other numeric columns both rows actually have.
     """
     numeric_df = numeric_df.copy()
+    
+    # Treat explicit 0s as missing data as requested
+    numeric_df.replace(0, np.nan, inplace=True)
+
     fully_missing = numeric_df.columns[numeric_df.isna().all()]
     if len(fully_missing) > 0:
         numeric_df = numeric_df.drop(columns=fully_missing)
@@ -60,11 +63,10 @@ def impute_numeric_knn(numeric_df: pd.DataFrame, k: int = 5) -> dict:
 
 
 def compare_imputations(numeric_df: pd.DataFrame, median_df: pd.DataFrame, knn_df: pd.DataFrame) -> pd.DataFrame:
-    """For every originally-missing cell, show the median fill next to the KNN fill.
-
-    Only compares columns both imputations actually produced a value for
-    (a column entirely missing might have been dropped by one or both).
-    """
+    """For every originally-missing cell (including zeros), show the median fill next to the KNN fill."""
+    numeric_df = numeric_df.copy()
+    numeric_df.replace(0, np.nan, inplace=True)  # Treat 0 as missing for comparison mask
+    
     mask = numeric_df.isna()
     common_cols = [c for c in numeric_df.columns if c in median_df.columns and c in knn_df.columns]
 

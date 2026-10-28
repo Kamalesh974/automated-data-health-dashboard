@@ -10,7 +10,7 @@ import math
 
 import numpy as np
 import pandas as pd
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from stats import covariance_matrix, dataset_overview, five_point_summary, numeric_summary
@@ -20,6 +20,7 @@ from ml_processing import (
     detect_outliers_knn,
     get_numeric_columns,
 )
+from preprocessing import impute_numeric_median, impute_numeric_knn
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024  # 1 GB upload cap
@@ -76,6 +77,56 @@ def too_large(_e):
 @app.get("/api/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+@app.post("/api/export")
+def export_cleaned_data():
+    """Generates and streams a downloadable CSV of the dataset after zero/NaN imputation."""
+    file = request.files.get("file")
+    if file is None or file.filename == "":
+        return jsonify({"error": "No file uploaded. Attach a CSV as 'file'."}), 400
+
+    impute_method = request.form.get("impute_method", "median")
+    if impute_method not in ("median", "knn"):
+        return jsonify({"error": "impute_method must be median or knn."}), 400
+
+    try:
+        impute_k = int(request.form.get("impute_k", 5))
+    except ValueError:
+        return jsonify({"error": "impute_k must be an integer."}), 400
+
+    try:
+        df = pd.read_csv(io.BytesIO(file.read()))
+    except Exception as e:
+        return jsonify({"error": f"Could not parse CSV: {e}"}), 400
+
+    if df.empty:
+        return jsonify({"error": "The CSV has no rows."}), 400
+
+    numeric_df = get_numeric_columns(df)
+
+    if numeric_df.shape[1] > 0:
+        if impute_method == "knn":
+            res = impute_numeric_knn(numeric_df, k=impute_k)
+        else:
+            res = impute_numeric_median(numeric_df)
+        
+        cleaned_numeric_df = res["imputed_df"]
+        
+        # Recombine imputed numeric columns back into the full dataset frame
+        for col in cleaned_numeric_df.columns:
+            df[col] = cleaned_numeric_df[col]
+
+    output_stream = io.BytesIO()
+    df.to_csv(output_stream, index=False)
+    output_stream.seek(0)
+
+    return send_file(
+        output_stream,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="cleaned_profiled_data.csv"
+    )
 
 
 @app.post("/api/analyze")

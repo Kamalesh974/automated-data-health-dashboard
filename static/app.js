@@ -49,8 +49,7 @@ function setFile(file) {
 }
 
 // ---------------------------------------------------------------------------
-// Quick preview: parsed client-side the instant a file is chosen, before
-// "Analyze" is ever clicked - no server round-trip.
+// Quick preview
 // ---------------------------------------------------------------------------
 const previewCard = document.getElementById("preview-card");
 const previewNote = document.getElementById("preview-note");
@@ -93,9 +92,6 @@ function parseCsvText(text) {
   return rows;
 }
 
-// Matches pandas.read_csv's default na_values, so a column that mixes real
-// numbers with these tokens is still recognized as numeric here - just like
-// the Python backend (which is what actually scores the data).
 const NA_TOKENS = new Set([
   "", "#N/A", "#N/A N/A", "#NA", "-1.#IND", "-1.#QNAN", "-NaN", "-nan",
   "1.#IND", "1.#QNAN", "<NA>", "N/A", "NA", "NULL", "NaN", "None", "n/a", "nan", "null",
@@ -125,7 +121,7 @@ async function updatePreview(file) {
   const token = ++previewToken;
   try {
     const text = await file.text();
-    if (token !== previewToken) return; // a newer file was chosen meanwhile
+    if (token !== previewToken) return;
     const columns = extractNumericColumns(text);
     const names = Object.keys(columns);
     destroyPreviewCharts();
@@ -206,7 +202,7 @@ function showStatus(kind, message) {
 }
 
 // ---------------------------------------------------------------------------
-// Formatting helpers
+// Formatting & Table helpers
 // ---------------------------------------------------------------------------
 function fmt(v) {
   if (v === null || v === undefined) return "";
@@ -238,9 +234,6 @@ function downloadCsv(filename, columns, rows, showIndex) {
   URL.revokeObjectURL(url);
 }
 
-// ---------------------------------------------------------------------------
-// Sortable, exportable tables
-// ---------------------------------------------------------------------------
 let tableSeq = 0;
 const tableState = {};
 
@@ -320,7 +313,46 @@ function drawAllTables() {
 }
 
 // ---------------------------------------------------------------------------
-// Charts
+// Download Cleaned CSV Export
+// ---------------------------------------------------------------------------
+async function downloadCleanedCSV() {
+  if (!currentFile) {
+    alert("Please choose or drop a CSV file first.");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", currentFile);
+  formData.append("impute_method", imputeMethodSelect.value);
+  formData.append("impute_k", document.getElementById("opt-impute-k").value || 5);
+
+  try {
+    const response = await fetch("/api/export", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Export failed");
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "cleaned_profiled_data.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    alert("Could not generate export: " + err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Charts & Visualizations
 // ---------------------------------------------------------------------------
 let activeCharts = [];
 
@@ -592,6 +624,18 @@ function renderImputationComparison(imputationComparison) {
   return parts.join("\n");
 }
 
+function renderExportSection() {
+  return `
+    <div class="card" style="text-align: center; padding: 24px;">
+      <h2>Export Cleaned Dataset</h2>
+      <p class="note-line">Download your dataset with all missing values and explicit zeros resolved using your selected imputation method.</p>
+      <button type="button" class="primary-btn" onclick="downloadCleanedCSV()" style="margin-top: 10px;">
+        📥 Download Cleaned / Imputed CSV
+      </button>
+    </div>
+  `;
+}
+
 function render(data) {
   Object.keys(tableState).forEach((k) => delete tableState[k]);
   destroyCharts();
@@ -645,6 +689,9 @@ function render(data) {
     parts.push(`<div class="card">${renderComparison(data.comparison)}</div>`);
   }
 
+  // Export card appended at bottom
+  parts.push(renderExportSection());
+
   resultsEl.innerHTML = parts.join("\n");
   resultsEl.classList.remove("hidden");
   drawAllTables();
@@ -652,7 +699,7 @@ function render(data) {
 }
 
 // ---------------------------------------------------------------------------
-// Analyze
+// Analyze trigger
 // ---------------------------------------------------------------------------
 function setLoading(isLoading) {
   analyzeBtn.disabled = isLoading;
